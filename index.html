@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>おくすり飲んだ？メモ</title>
+<meta name="theme-color" content="#F69BBF">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  /* ===== 色の設定（アイコン画像から取った色味） ===== */
+  :root{
+    --sand:#FEF1CC;        /* 砂浜クリーム：背景 */
+    --pink:#F69BBF;        /* ハイビスカスピンク：メインボタン */
+    --pink-deep:#D96C97;   /* 濃いピンク：押したとき・文字用 */
+    --leaf:#9DCC5E;        /* 葉っぱグリーン：アクセント */
+    --leaf-pale:#EDF3C8;   /* 淡いグリーン：履歴の帯など */
+    --sky:#91D3F5;         /* 空ブルー：差し色 */
+    --ink:#6B4F3A;         /* 柔らかい茶色：文字 */
+    --card:#FFFDF4;        /* カードの白 */
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body{
+    margin:0; padding:16px;
+    font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",sans-serif;
+    background:var(--sand); color:var(--ink);
+  }
+  h1{ font-size:22px; text-align:center; margin:8px 0 4px; }
+  .subtitle{ text-align:center; font-size:13px; opacity:.75; margin:0 0 16px; }
+
+  /* ===== 薬カード ===== */
+  .med-card{
+    background:var(--card); border:2px solid #F3DFB8; border-radius:20px;
+    padding:16px; margin-bottom:14px; box-shadow:0 2px 6px rgba(107,79,58,.08);
+  }
+  .med-head{ display:flex; justify-content:space-between; align-items:center; }
+  .med-name{ font-size:20px; font-weight:bold; }
+  .del-med{
+    border:none; background:none; color:#B99B7E; font-size:13px; cursor:pointer;
+    text-decoration:underline; padding:4px;
+  }
+  .take-btn{
+    display:block; width:100%; margin:12px 0 10px; padding:18px;
+    font-size:22px; font-weight:bold; font-family:inherit;
+    color:#fff; background:var(--pink); border:none; border-radius:999px;
+    box-shadow:0 4px 0 var(--pink-deep); cursor:pointer;
+  }
+  .take-btn:active{ transform:translateY(3px); box-shadow:0 1px 0 var(--pink-deep); }
+  .last{ font-size:15px; line-height:1.5; }
+  .last .elapsed{ color:var(--pink-deep); font-weight:bold; }
+  .undo-btn{
+    margin-top:6px; border:2px solid var(--leaf); background:#fff; color:#5F7D2A;
+    font-size:13px; font-family:inherit; border-radius:999px; padding:5px 14px; cursor:pointer;
+  }
+
+  /* ===== 薬の追加 ===== */
+  .add-box{
+    background:var(--card); border:2px dashed #E4CFA0; border-radius:20px;
+    padding:14px 16px; margin-bottom:14px;
+  }
+  .add-box p{ margin:0 0 8px; font-size:14px; font-weight:bold; }
+  .add-row{ display:flex; gap:8px; }
+  .add-row input{
+    flex:1; font-size:16px; font-family:inherit; padding:10px 12px;
+    border:2px solid #E4CFA0; border-radius:12px; color:var(--ink); background:#fff;
+  }
+  .add-row button{
+    font-size:16px; font-family:inherit; font-weight:bold; cursor:pointer;
+    background:var(--leaf); color:#fff; border:none; border-radius:12px; padding:10px 16px;
+  }
+
+  /* ===== 画面切り替えボタン ===== */
+  .nav-btn{
+    display:block; width:100%; padding:14px; margin:18px 0 8px;
+    font-size:17px; font-weight:bold; font-family:inherit; cursor:pointer;
+    background:var(--sky); color:#fff; border:none; border-radius:999px;
+    box-shadow:0 3px 0 #5FA8CF;
+  }
+  .nav-btn:active{ transform:translateY(2px); box-shadow:0 1px 0 #5FA8CF; }
+
+  /* ===== 履歴 ===== */
+  .count-box{
+    background:var(--leaf-pale); border-radius:16px; padding:12px 16px; margin-bottom:14px;
+    font-size:15px; line-height:1.7;
+  }
+  .day-title{
+    font-size:15px; font-weight:bold; margin:16px 0 6px;
+    border-left:6px solid var(--pink); padding-left:8px;
+  }
+  .hist-item{
+    background:var(--card); border-radius:12px; padding:9px 14px; margin-bottom:6px;
+    font-size:15px; display:flex; justify-content:space-between;
+  }
+  .empty{ text-align:center; opacity:.7; padding:24px 0; font-size:15px; }
+
+  /* ===== トースト（記録しました の表示） ===== */
+  #toast{
+    position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(80px);
+    background:var(--ink); color:#fff; font-size:15px; padding:12px 22px;
+    border-radius:999px; opacity:0; transition:all .3s; pointer-events:none;
+    max-width:88vw; text-align:center;
+  }
+  #toast.show{ transform:translateX(-50%) translateY(0); opacity:1; }
+  .hidden{ display:none; }
+  footer{ text-align:center; font-size:12px; opacity:.6; margin-top:20px; line-height:1.6; }
+</style>
+</head>
+<body>
+
+<!-- ========== メイン画面 ========== -->
+<div id="view-main">
+  <h1>💊 おくすり飲んだ？メモ</h1>
+  <p class="subtitle">飲んだらボタンを押すだけ。最後に飲んだ日時がすぐ分かるよ</p>
+
+  <div id="med-list"></div>
+
+  <div class="add-box">
+    <p>＋ 薬を追加する</p>
+    <div class="add-row">
+      <input id="new-med-name" type="text" placeholder="薬の名前（例：ロキソニン）" maxlength="30">
+      <button id="add-med-btn">追加</button>
+    </div>
+  </div>
+
+  <button class="nav-btn" id="to-history">📖 履歴を見る（直近1ヶ月）</button>
+  <footer>記録はこの端末の中だけに保存されます。<br>30日より古い記録は自動で消えます。</footer>
+</div>
+
+<!-- ========== 履歴画面 ========== -->
+<div id="view-history" class="hidden">
+  <h1>📖 飲んだ履歴</h1>
+  <p class="subtitle">直近1ヶ月分（30日）</p>
+  <div class="count-box" id="count-box"></div>
+  <div id="history-list"></div>
+  <button class="nav-btn" id="to-main">← もどる</button>
+</div>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* =====================================================
+   おくすり飲んだ？メモ
+   記録は localStorage に保存します（端末の外に出ません）
+   ===================================================== */
+const STORAGE_KEY = "okusuri-memo-v1";
+const KEEP_DAYS = 30; // 記録を残す日数
+
+/* ---------- データの読み書き ---------- */
+function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){ return JSON.parse(raw); }
+  }catch(e){ /* 壊れていたら初期化する */ }
+  // 初回だけの初期データ（薬はあとから追加・削除できます）
+  return { meds: [{ id: "m1", name: "ロキソニン" }], records: [] };
+}
+function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+/* 30日より古い記録を消す */
+function pruneOld(){
+  const limit = Date.now() - KEEP_DAYS * 24 * 60 * 60 * 1000;
+  const before = data.records.length;
+  data.records = data.records.filter(r => r.ts >= limit);
+  if(data.records.length !== before){ saveData(); }
+}
+
+/* ---------- 表示用の小物 ---------- */
+function esc(s){
+  return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function fmtDateTime(ts){
+  const d = new Date(ts);
+  return (d.getMonth()+1) + "/" + d.getDate() + " " +
+         String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+}
+function fmtTime(ts){
+  const d = new Date(ts);
+  return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+}
+/* 経過時間の表示（例：たった今／25分前／3時間12分前／2日前） */
+function fmtElapsed(ts){
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if(min < 1) return "たった今";
+  if(min < 60) return min + "分前";
+  const h = Math.floor(min / 60);
+  if(h < 24){
+    const m = min % 60;
+    return h + "時間" + (m > 0 ? m + "分" : "") + "前";
+  }
+  return Math.floor(h / 24) + "日前";
+}
+/* その薬の最新の記録を返す（なければ null） */
+function latestRecord(medId){
+  let best = null;
+  for(const r of data.records){
+    if(r.medId === medId && (!best || r.ts > best.ts)) best = r;
+  }
+  return best;
+}
+
+/* ---------- メイン画面の描画 ---------- */
+const medListEl = document.getElementById("med-list");
+function renderMain(){
+  medListEl.innerHTML = "";
+  if(data.meds.length === 0){
+    medListEl.innerHTML = '<p class="empty">まだ薬が登録されていません。<br>下の「薬を追加する」から追加してね。</p>';
+    return;
+  }
+  for(const med of data.meds){
+    const last = latestRecord(med.id);
+    const card = document.createElement("div");
+    card.className = "med-card";
+    card.innerHTML =
+      '<div class="med-head">' +
+        '<span class="med-name">' + esc(med.name) + '</span>' +
+        '<button class="del-med" data-del="' + med.id + '">この薬を消す</button>' +
+      '</div>' +
+      '<button class="take-btn" data-take="' + med.id + '">飲んだ！</button>' +
+      '<div class="last">' + (last
+        ? '最後に飲んだ日時：<b>' + fmtDateTime(last.ts) + '</b>（<span class="elapsed">' + fmtElapsed(last.ts) + '</span>）'
+        : 'まだ記録がありません') +
+      '</div>' +
+      (last ? '<button class="undo-btn" data-undo="' + med.id + '">↩ 直前の記録を取り消す</button>' : '');
+    medListEl.appendChild(card);
+  }
+}
+
+/* ---------- 履歴画面の描画 ---------- */
+function renderHistory(){
+  // 薬ごとの回数（直近30日）
+  const counts = {};
+  for(const r of data.records){
+    const med = data.meds.find(m => m.id === r.medId);
+    const name = med ? med.name : "（削除された薬）";
+    counts[name] = (counts[name] || 0) + 1;
+  }
+  const countBox = document.getElementById("count-box");
+  const names = Object.keys(counts);
+  countBox.innerHTML = names.length
+    ? "<b>直近1ヶ月の合計</b><br>" + names.map(n => esc(n) + "：" + counts[n] + "回").join("<br>")
+    : "直近1ヶ月の記録はまだありません。";
+
+  // 日付ごとにグループ化して新しい順に表示
+  const list = document.getElementById("history-list");
+  list.innerHTML = "";
+  const sorted = [...data.records].sort((a,b) => b.ts - a.ts);
+  let currentDay = "";
+  for(const r of sorted){
+    const d = new Date(r.ts);
+    const day = (d.getMonth()+1) + "月" + d.getDate() + "日";
+    if(day !== currentDay){
+      currentDay = day;
+      const title = document.createElement("div");
+      title.className = "day-title";
+      title.textContent = day;
+      list.appendChild(title);
+    }
+    const med = data.meds.find(m => m.id === r.medId);
+    const item = document.createElement("div");
+    item.className = "hist-item";
+    item.innerHTML = "<span>" + esc(med ? med.name : "（削除された薬）") + "</span><span>" + fmtTime(r.ts) + "</span>";
+    list.appendChild(item);
+  }
+  if(sorted.length === 0){
+    list.innerHTML = '<p class="empty">履歴はまだありません。</p>';
+  }
+}
+
+/* ---------- 操作 ---------- */
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+/* カード内のボタン（飲んだ／取り消し／薬を消す）をまとめて処理 */
+medListEl.addEventListener("click", e => {
+  const takeId = e.target.getAttribute("data-take");
+  const undoId = e.target.getAttribute("data-undo");
+  const delId  = e.target.getAttribute("data-del");
+
+  if(takeId){
+    const med = data.meds.find(m => m.id === takeId);
+    const now = Date.now();
+    data.records.push({ medId: takeId, ts: now });
+    saveData();
+    renderMain();
+    if(navigator.vibrate) navigator.vibrate(30);
+    showToast("記録したよ：" + (med ? med.name : "") + " " + fmtDateTime(now));
+  }
+  if(undoId){
+    const med = data.meds.find(m => m.id === undoId);
+    const last = latestRecord(undoId);
+    if(last && confirm((med ? med.name : "") + " の直前の記録（" + fmtDateTime(last.ts) + "）を取り消しますか？")){
+      data.records = data.records.filter(r => r !== last);
+      saveData();
+      renderMain();
+      showToast("取り消したよ");
+    }
+  }
+  if(delId){
+    const med = data.meds.find(m => m.id === delId);
+    if(confirm("「" + (med ? med.name : "") + "」を消しますか？\nこの薬の記録も全部消えます。")){
+      data.meds = data.meds.filter(m => m.id !== delId);
+      data.records = data.records.filter(r => r.medId !== delId);
+      saveData();
+      renderMain();
+      showToast("消したよ");
+    }
+  }
+});
+
+/* 薬の追加 */
+document.getElementById("add-med-btn").addEventListener("click", () => {
+  const input = document.getElementById("new-med-name");
+  const name = input.value.trim();
+  if(!name){ showToast("薬の名前を入れてね"); return; }
+  data.meds.push({ id: "m" + Date.now(), name: name });
+  saveData();
+  input.value = "";
+  renderMain();
+  showToast("追加したよ：" + name);
+});
+
+/* 画面の切り替え */
+document.getElementById("to-history").addEventListener("click", () => {
+  pruneOld();
+  renderHistory();
+  document.getElementById("view-main").classList.add("hidden");
+  document.getElementById("view-history").classList.remove("hidden");
+  window.scrollTo(0, 0);
+});
+document.getElementById("to-main").addEventListener("click", () => {
+  renderMain();
+  document.getElementById("view-history").classList.add("hidden");
+  document.getElementById("view-main").classList.remove("hidden");
+  window.scrollTo(0, 0);
+});
+
+/* ---------- 起動 ---------- */
+let data = loadData();
+pruneOld();
+renderMain();
+/* 経過時間の表示を新しく保つため、1分ごとに描き直す */
+setInterval(() => {
+  if(!document.getElementById("view-main").classList.contains("hidden")) renderMain();
+}, 60000);
+
+/* Service Worker（オフラインでも開けるように） */
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>
