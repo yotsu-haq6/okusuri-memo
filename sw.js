@@ -1,7 +1,7 @@
 // おくすり飲んだ？メモ Service Worker
 // アプリのファイルを端末に保存して、オフラインでも開けるようにします。
 // バージョンを変えたら CACHE_NAME の数字も上げてください（例：v2）。
-const CACHE_NAME = "okusuri-memo-v1";
+const CACHE_NAME = "okusuri-memo-v2";
 const FILES = [
   "./",
   "./index.html",

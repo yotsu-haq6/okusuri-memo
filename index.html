@@ -54,6 +54,30 @@
     font-size:13px; font-family:inherit; border-radius:999px; padding:5px 14px; cursor:pointer;
   }
 
+  /* ===== 押し忘れた分の手動追加 ===== */
+  .manual-toggle{
+    display:block; margin-top:10px; border:none; background:none; cursor:pointer;
+    color:#8A6D4F; font-size:13px; font-family:inherit; text-decoration:underline; padding:4px 0;
+  }
+  .manual-box{
+    margin-top:6px; background:#FFF6DE; border:2px solid #F3DFB8; border-radius:14px; padding:12px;
+  }
+  .manual-box .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .day-btn{
+    border:2px solid var(--leaf); background:#fff; color:#5F7D2A; cursor:pointer;
+    font-size:14px; font-family:inherit; border-radius:999px; padding:6px 16px;
+  }
+  .day-btn.selected{ background:var(--leaf); color:#fff; font-weight:bold; }
+  .manual-time{
+    font-size:16px; font-family:inherit; color:var(--ink);
+    border:2px solid #E4CFA0; border-radius:10px; padding:6px 10px; background:#fff;
+  }
+  .manual-add{
+    display:block; width:100%; margin-top:10px; padding:11px; cursor:pointer;
+    font-size:15px; font-weight:bold; font-family:inherit;
+    background:var(--pink); color:#fff; border:none; border-radius:999px;
+  }
+
   /* ===== 薬の追加 ===== */
   .add-box{
     background:var(--card); border:2px dashed #E4CFA0; border-radius:20px;
@@ -200,6 +224,15 @@ function latestRecord(medId){
   }
   return best;
 }
+/* 手動追加用：日付のずれ（0=今日, 1=昨日）と「HH:MM」から時刻を作る。空なら null */
+function manualTs(dayOffset, timeVal){
+  if(!timeVal) return null;
+  const parts = timeVal.split(":");
+  const d = new Date();
+  d.setDate(d.getDate() - dayOffset);
+  d.setHours(Number(parts[0]), Number(parts[1]), 0, 0);
+  return d.getTime();
+}
 
 /* ---------- メイン画面の描画 ---------- */
 const medListEl = document.getElementById("med-list");
@@ -223,7 +256,16 @@ function renderMain(){
         ? '最後に飲んだ日時：<b>' + fmtDateTime(last.ts) + '</b>（<span class="elapsed">' + fmtElapsed(last.ts) + '</span>）'
         : 'まだ記録がありません') +
       '</div>' +
-      (last ? '<button class="undo-btn" data-undo="' + med.id + '">↩ 直前の記録を取り消す</button>' : '');
+      (last ? '<button class="undo-btn" data-undo="' + med.id + '">↩ 直前の記録を取り消す</button>' : '') +
+      '<button class="manual-toggle" data-manual="' + med.id + '">＋ 押し忘れた分を手動で追加</button>' +
+      '<div class="manual-box hidden" id="manual-' + med.id + '">' +
+        '<div class="row">' +
+          '<button class="day-btn selected" data-day="0">今日</button>' +
+          '<button class="day-btn" data-day="1">昨日</button>' +
+          '<input type="time" class="manual-time">' +
+        '</div>' +
+        '<button class="manual-add" data-manual-add="' + med.id + '">この時刻で記録する</button>' +
+      '</div>';
     medListEl.appendChild(card);
   }
 }
@@ -282,6 +324,38 @@ medListEl.addEventListener("click", e => {
   const takeId = e.target.getAttribute("data-take");
   const undoId = e.target.getAttribute("data-undo");
   const delId  = e.target.getAttribute("data-del");
+  const manualId = e.target.getAttribute("data-manual");
+  const manualAddId = e.target.getAttribute("data-manual-add");
+  const dayAttr = e.target.getAttribute("data-day");
+
+  /* 手動追加エリアの開閉 */
+  if(manualId){
+    document.getElementById("manual-" + manualId).classList.toggle("hidden");
+    return;
+  }
+  /* 今日／昨日の切り替え */
+  if(dayAttr !== null && e.target.classList.contains("day-btn")){
+    const box = e.target.closest(".manual-box");
+    box.querySelectorAll(".day-btn").forEach(b => b.classList.remove("selected"));
+    e.target.classList.add("selected");
+    return;
+  }
+  /* 手動追加の実行 */
+  if(manualAddId){
+    const box = document.getElementById("manual-" + manualAddId);
+    const sel = box.querySelector(".day-btn.selected");
+    const offset = sel ? Number(sel.getAttribute("data-day")) : 0;
+    const timeVal = box.querySelector(".manual-time").value;
+    const ts = manualTs(offset, timeVal);
+    if(ts === null){ showToast("時刻を入れてね"); return; }
+    if(ts > Date.now()){ showToast("未来の時刻にはできないよ"); return; }
+    const med = data.meds.find(m => m.id === manualAddId);
+    data.records.push({ medId: manualAddId, ts: ts });
+    saveData();
+    renderMain();
+    showToast("追加したよ：" + (med ? med.name : "") + " " + fmtDateTime(ts));
+    return;
+  }
 
   if(takeId){
     const med = data.meds.find(m => m.id === takeId);
