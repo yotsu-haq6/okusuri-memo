@@ -148,6 +148,17 @@
   </div>
 
   <button class="nav-btn" id="to-history">📖 履歴を見る（直近1ヶ月）</button>
+
+  <div class="add-box">
+    <p>💾 記録のバックアップ</p>
+    <div class="add-row">
+      <button id="export-btn">書き出す</button>
+      <button id="import-btn">読み込む</button>
+    </div>
+    <p style="margin:8px 0 0; font-size:12px; font-weight:normal; opacity:.75;">記録をファイルに残せます。アプリ版への引っ越しや、万一の時のためにどうぞ。</p>
+    <input type="file" id="import-file" accept=".json,application/json" class="hidden">
+  </div>
+
   <footer>記録はこの端末の中だけに保存されます。<br>30日より古い記録は自動で消えます。</footer>
 </div>
 
@@ -172,15 +183,24 @@ const STORAGE_KEY = "okusuri-memo-v1";
 const KEEP_DAYS = 30; // 記録を残す日数
 
 /* ---------- データの読み書き ---------- */
+/* アプリ版（Android）では OkBridge 経由で端末内の共有ファイルに保存し、
+   ウィジェットと記録を共有します。ブラウザ版では従来どおり localStorage です。 */
+const Bridge = (typeof window !== "undefined" && window.OkBridge) ? window.OkBridge : null;
 function loadData(){
   try{
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = Bridge ? Bridge.load() : localStorage.getItem(STORAGE_KEY);
     if(raw){ return JSON.parse(raw); }
   }catch(e){ /* 壊れていたら初期化する */ }
   // 初回だけの初期データ（薬はあとから追加・削除できます）
   return { meds: [{ id: "m1", name: "ロキソニン" }], records: [] };
 }
-function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+function saveData(){
+  const raw = JSON.stringify(data);
+  try{
+    if(Bridge){ Bridge.save(raw); }
+    else{ localStorage.setItem(STORAGE_KEY, raw); }
+  }catch(e){ /* 保存に失敗しても画面は続ける */ }
+}
 
 /* 30日より古い記録を消す */
 function pruneOld(){
@@ -413,6 +433,48 @@ document.getElementById("to-main").addEventListener("click", () => {
   document.getElementById("view-history").classList.add("hidden");
   document.getElementById("view-main").classList.remove("hidden");
   window.scrollTo(0, 0);
+});
+
+/* ---------- 記録の書き出し・読み込み ---------- */
+document.getElementById("export-btn").addEventListener("click", () => {
+  const payload = JSON.stringify({ app: "okusuri-memo", version: 1, exportedAt: new Date().toISOString(), data: data }, null, 2);
+  if(Bridge && Bridge.exportData){ Bridge.exportData(payload); return; }
+  const blob = new Blob([payload], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "okusuri-memo-backup.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  showToast("書き出したよ");
+});
+const importFileEl = document.getElementById("import-file");
+document.getElementById("import-btn").addEventListener("click", () => { importFileEl.click(); });
+importFileEl.addEventListener("change", () => {
+  const file = importFileEl.files && importFileEl.files[0];
+  importFileEl.value = "";
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const parsed = JSON.parse(String(reader.result));
+      const d = (parsed && parsed.data) ? parsed.data : parsed;
+      if(!d || !Array.isArray(d.meds) || !Array.isArray(d.records)) throw new Error("shape");
+      for(const m of d.meds){ if(typeof m.id !== "string" || typeof m.name !== "string") throw new Error("med"); }
+      for(const r of d.records){ if(typeof r.medId !== "string" || typeof r.ts !== "number") throw new Error("rec"); }
+      if(!confirm("読み込んだ記録で今の記録を置き換えますか？\n（今の記録は消えます）")) return;
+      data = d;
+      saveData();
+      pruneOld();
+      renderMain();
+      showToast("読み込んだよ");
+    }catch(e){
+      showToast("そのファイルは読み込めなかったよ");
+    }
+  };
+  reader.readAsText(file);
 });
 
 /* ---------- 起動 ---------- */
